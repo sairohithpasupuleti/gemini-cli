@@ -12,8 +12,7 @@ import {
 } from '@google/genai';
 import { createAudioBlob } from '../audio/audioStream.js';
 
-const DEFAULT_LIVE_MODEL =
-  'models/gemini-2.5-flash-native-audio-preview-12-2025';
+const DEFAULT_LIVE_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
 const VOICE_DEBUG_ENABLED = process.env['GEMINI_VOICE_DEBUG'] === 'true';
 
 export interface VoiceAudioCallbacks {
