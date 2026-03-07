@@ -12,7 +12,8 @@ import {
 } from '@google/genai';
 import { createAudioBlob } from '../audio/audioStream.js';
 
-const DEFAULT_LIVE_MODEL = 'models/gemini-2.0-flash-exp';
+const DEFAULT_LIVE_MODEL =
+  'models/gemini-2.5-flash-native-audio-preview-12-2025';
 const VOICE_DEBUG_ENABLED = process.env['GEMINI_VOICE_DEBUG'] === 'true';
 
 export interface VoiceAudioCallbacks {
@@ -43,6 +44,10 @@ function extractTranscript(message: LiveServerMessage): string | null {
   return modelText || null;
 }
 
+function normalizeModelId(model: string): string {
+  return model.startsWith('models/') ? model : `models/${model}`;
+}
+
 export class GeminiAudioClient implements VoiceAudioClient {
   private session: Session | undefined;
   private connected = false;
@@ -54,7 +59,7 @@ export class GeminiAudioClient implements VoiceAudioClient {
 
   async connect(callbacks: VoiceAudioCallbacks): Promise<void> {
     this.session = await this.ai.live.connect({
-      model: this.model,
+      model: normalizeModelId(this.model),
       config: {
         responseModalities: [Modality.TEXT],
         inputAudioTranscription: {},
@@ -105,7 +110,7 @@ export class GeminiAudioClient implements VoiceAudioClient {
               `[voice:debug] Gemini Live websocket closed (code=${event.code}, reason="${event.reason}")\n`,
             );
           }
-          const modelHint = `Try setting GEMINI_VOICE_MODEL (e.g. gemini-live-2.5-flash-native-audio) and optionally GEMINI_VOICE_API_VERSION (e.g. v1beta).`;
+          const modelHint = `Try setting GEMINI_VOICE_MODEL (e.g. gemini-2.5-flash-native-audio-preview-12-2025) and optionally GEMINI_VOICE_API_VERSION (e.g. v1beta).`;
           callbacks.onError(
             new Error(
               `Gemini Live connection closed (code=${event.code}, reason="${event.reason || 'none'}"). ${modelHint}`,
