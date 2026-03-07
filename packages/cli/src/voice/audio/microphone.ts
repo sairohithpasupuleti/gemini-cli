@@ -15,7 +15,7 @@ interface RecorderFactory {
   record: (options: {
     sampleRate: number;
     channels: number;
-    audioType: 'wav';
+    audioType: 'wav' | 'raw';
     threshold: number;
   }) => RecorderInstance;
 }
@@ -72,7 +72,7 @@ export async function startMicrophone(): Promise<MicrophoneCapture> {
   const recording = recorder.record({
     sampleRate: 16000,
     channels: 1,
-    audioType: 'wav',
+    audioType: 'raw',
     threshold: 0,
   });
 

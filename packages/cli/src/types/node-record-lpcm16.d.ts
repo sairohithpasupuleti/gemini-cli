@@ -15,7 +15,7 @@ declare module 'node-record-lpcm16' {
   export interface RecorderOptions {
     sampleRate: number;
     channels: number;
-    audioType: 'wav';
+    audioType: 'wav' | 'raw';
     threshold: number;
   }
 
