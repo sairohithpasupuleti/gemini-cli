@@ -73,9 +73,12 @@ export class GeminiAudioClient implements VoiceAudioClient {
             const hasInputTranscript = Boolean(
               message.serverContent?.inputTranscription?.text,
             );
+            const hasOutputTranscript = Boolean(
+              message.serverContent?.outputTranscription?.text,
+            );
             const hasModelTurn = Boolean(message.serverContent?.modelTurn);
             process.stdout.write(
-              `[voice:debug] Gemini Live message received (inputTranscript=${hasInputTranscript}, modelTurn=${hasModelTurn})\n`,
+              `[voice:debug] Gemini Live message received (inputTranscript=${hasInputTranscript}, outputTranscript=${hasOutputTranscript}, modelTurn=${hasModelTurn})\n`,
             );
           }
           const transcript = extractTranscript(message);

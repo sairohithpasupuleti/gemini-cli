@@ -55,7 +55,9 @@ export class VoiceSession {
       (() => {
         const apiKey =
           process.env['GOOGLE_API_KEY'] ?? process.env['GEMINI_API_KEY'];
-        return new GeminiAudioClient(new GoogleGenAI({ apiKey }));
+        return new GeminiAudioClient(
+          new GoogleGenAI({ apiKey, apiVersion: 'v1alpha' }),
+        );
       });
   }
 
