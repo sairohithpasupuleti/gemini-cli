@@ -55,9 +55,12 @@ export class VoiceSession {
       (() => {
         const apiKey =
           process.env['GOOGLE_API_KEY'] ?? process.env['GEMINI_API_KEY'];
-        return new GeminiAudioClient(
-          new GoogleGenAI({ apiKey, apiVersion: 'v1alpha' }),
-        );
+        const apiVersion = process.env['GEMINI_VOICE_API_VERSION'] || 'v1beta';
+        const model = process.env['GEMINI_VOICE_MODEL'];
+        const ai = new GoogleGenAI({ apiKey, apiVersion });
+        return model
+          ? new GeminiAudioClient(ai, model)
+          : new GeminiAudioClient(ai);
       });
   }
 

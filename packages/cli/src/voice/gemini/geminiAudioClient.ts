@@ -12,7 +12,7 @@ import {
 } from '@google/genai';
 import { createAudioBlob } from '../audio/audioStream.js';
 
-const DEFAULT_LIVE_MODEL = 'gemini-live-2.5-flash-preview';
+const DEFAULT_LIVE_MODEL = 'models/gemini-2.0-flash-exp';
 const VOICE_DEBUG_ENABLED = process.env['GEMINI_VOICE_DEBUG'] === 'true';
 
 export interface VoiceAudioCallbacks {
@@ -105,9 +105,10 @@ export class GeminiAudioClient implements VoiceAudioClient {
               `[voice:debug] Gemini Live websocket closed (code=${event.code}, reason="${event.reason}")\n`,
             );
           }
+          const modelHint = `Try setting GEMINI_VOICE_MODEL (e.g. gemini-live-2.5-flash-native-audio) and optionally GEMINI_VOICE_API_VERSION (e.g. v1beta).`;
           callbacks.onError(
             new Error(
-              `Gemini Live connection closed (code=${event.code}, reason="${event.reason || 'none'}")`,
+              `Gemini Live connection closed (code=${event.code}, reason="${event.reason || 'none'}"). ${modelHint}`,
             ),
           );
         },
