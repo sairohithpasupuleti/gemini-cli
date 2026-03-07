@@ -54,8 +54,10 @@ export class VoiceSession {
   }
 
   async start(): Promise<void> {
+    this.output.write('Initializing microphone...\n');
     this.debug('voice session start requested');
     const microphone = await this.createMicrophone();
+    this.output.write('Microphone ready.\n');
     this.debug('microphone capture initialized');
     const geminiAudioClient = this.createGeminiAudioClient();
     this.output.write('Listening for voice input...\n');

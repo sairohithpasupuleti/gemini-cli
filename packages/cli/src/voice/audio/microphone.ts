@@ -5,6 +5,7 @@
  */
 
 import type { Readable } from 'node:stream';
+import * as recorder from 'node-record-lpcm16';
 
 interface RecorderInstance {
   stream: () => Readable;
@@ -20,14 +21,18 @@ interface RecorderFactory {
   }) => RecorderInstance;
 }
 
-interface RecorderModuleShape {
-  default?: RecorderFactory;
-  record?: RecorderFactory['record'];
-}
-
 export interface MicrophoneCapture {
   stream: Readable;
   stop: () => void;
+}
+
+const VOICE_DEBUG_ENABLED = process.env['GEMINI_VOICE_DEBUG'] === 'true';
+
+function debugLog(message: string): void {
+  if (!VOICE_DEBUG_ENABLED) {
+    return;
+  }
+  process.stdout.write(`[voice:debug] ${message}\n`);
 }
 
 function isRecorderFactory(value: unknown): value is RecorderFactory {
@@ -39,45 +44,54 @@ function isRecorderFactory(value: unknown): value is RecorderFactory {
   );
 }
 
-function isRecorderModuleShape(value: unknown): value is RecorderModuleShape {
-  return typeof value === 'object' && value !== null;
-}
-
-function getRecorderFactory(moduleShape: RecorderModuleShape): RecorderFactory {
-  const candidate = moduleShape.default ?? moduleShape;
-  if (!isRecorderFactory(candidate)) {
-    throw new Error('node-record-lpcm16 did not expose a valid recorder API.');
+function getRecorderFactory(factoryLike: unknown): RecorderFactory {
+  if (isRecorderFactory(factoryLike)) {
+    return factoryLike;
   }
-  return candidate;
+
+  if (
+    typeof factoryLike === 'object' &&
+    factoryLike !== null &&
+    'default' in factoryLike
+  ) {
+    const defaultExport = (factoryLike as { default?: unknown }).default;
+    if (isRecorderFactory(defaultExport)) {
+      return defaultExport;
+    }
+  }
+
+  throw new Error('node-record-lpcm16 did not expose a valid recorder API.');
 }
 
 /**
  * Starts local microphone capture as 16kHz mono PCM suitable for Gemini Live.
  */
-export async function startMicrophone(): Promise<MicrophoneCapture> {
-  let moduleShape: unknown;
-  try {
-    moduleShape = await import('node-record-lpcm16');
-  } catch {
-    throw new Error(
-      'Voice mode microphone capture requires node-record-lpcm16. Install it in the CLI workspace to enable native audio input.',
-    );
-  }
-
-  if (!isRecorderModuleShape(moduleShape)) {
-    throw new Error('node-record-lpcm16 did not return a valid module.');
-  }
-
-  const recorder = getRecorderFactory(moduleShape);
-  const recording = recorder.record({
+export function startMicrophone(): MicrophoneCapture {
+  debugLog('starting microphone capture');
+  const recorderFactory = getRecorderFactory(recorder);
+  const recording = recorderFactory.record({
     sampleRate: 16000,
     channels: 1,
     audioType: 'raw',
     threshold: 0,
   });
+  const stream = recording.stream();
+  let sawChunk = false;
+
+  stream.on('data', () => {
+    if (sawChunk) {
+      return;
+    }
+    sawChunk = true;
+    debugLog('microphone audio chunk received');
+  });
+  stream.on('error', (err: Error) => {
+    debugLog(`microphone error: ${err.message}`);
+  });
+  debugLog('microphone stream created');
 
   return {
-    stream: recording.stream(),
+    stream,
     stop: () => recording.stop(),
   };
 }
