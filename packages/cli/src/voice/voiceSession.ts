@@ -15,6 +15,7 @@ import {
   type VoiceAudioClient,
 } from './gemini/geminiAudioClient.js';
 import { parseVoiceIntent, suggestVoiceIntent } from './voiceIntentParser.js';
+import { GoogleGenAI } from '@google/genai';
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -50,7 +51,12 @@ export class VoiceSession {
     this.createPromptId = options.createPromptId ?? (() => randomUUID());
     this.createMicrophone = options.createMicrophone ?? startMicrophone;
     this.createGeminiAudioClient =
-      options.createGeminiAudioClient ?? (() => new GeminiAudioClient());
+      options.createGeminiAudioClient ??
+      (() => {
+        const apiKey =
+          process.env['GOOGLE_API_KEY'] ?? process.env['GEMINI_API_KEY'];
+        return new GeminiAudioClient(new GoogleGenAI({ apiKey }));
+      });
   }
 
   async start(): Promise<void> {

@@ -610,6 +610,7 @@ export async function main() {
 
     // Handle --voice flag
     if (argv.voice) {
+      initializeOutputListenersAndFlush();
       writeToStdout('Enabled Hands-Free Voice Mode (experimental)\n');
       const session = new VoiceSession(config, settings);
       await session.start();
@@ -861,21 +862,23 @@ export function initializeOutputListenersAndFlush() {
   // If there are no listeners for output, make sure we flush so output is not
   // lost.
   if (coreEvents.listenerCount(CoreEvent.Output) === 0) {
+    const { stdout, stderr } = createWorkingStdio();
+
     // In non-interactive mode, ensure we drain any buffered output or logs to stderr
     coreEvents.on(CoreEvent.Output, (payload: OutputPayload) => {
       if (payload.isStderr) {
-        writeToStderr(payload.chunk, payload.encoding);
+        stderr.write(payload.chunk, payload.encoding);
       } else {
-        writeToStdout(payload.chunk, payload.encoding);
+        stdout.write(payload.chunk, payload.encoding);
       }
     });
 
     if (coreEvents.listenerCount(CoreEvent.ConsoleLog) === 0) {
       coreEvents.on(CoreEvent.ConsoleLog, (payload: ConsoleLogPayload) => {
         if (payload.type === 'error' || payload.type === 'warn') {
-          writeToStderr(payload.content);
+          stderr.write(payload.content);
         } else {
-          writeToStdout(payload.content);
+          stdout.write(payload.content);
         }
       });
     }
@@ -883,9 +886,9 @@ export function initializeOutputListenersAndFlush() {
     if (coreEvents.listenerCount(CoreEvent.UserFeedback) === 0) {
       coreEvents.on(CoreEvent.UserFeedback, (payload: UserFeedbackPayload) => {
         if (payload.severity === 'error' || payload.severity === 'warning') {
-          writeToStderr(payload.message);
+          stderr.write(payload.message);
         } else {
-          writeToStdout(payload.message);
+          stdout.write(payload.message);
         }
       });
     }

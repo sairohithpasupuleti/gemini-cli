@@ -18,6 +18,8 @@ interface RecorderFactory {
     channels: number;
     audioType: 'wav' | 'raw';
     threshold: number;
+    recorder?: string;
+    device?: string;
   }) => RecorderInstance;
 }
 
@@ -74,21 +76,28 @@ export function startMicrophone(): MicrophoneCapture {
     channels: 1,
     audioType: 'raw',
     threshold: 0,
+    recorder: 'sox',
   });
   const stream = recording.stream();
-  let sawChunk = false;
+  let chunkCount = 0;
 
-  stream.on('data', () => {
-    if (sawChunk) {
+  stream.on('data', (chunk: Buffer | Uint8Array) => {
+    if (!VOICE_DEBUG_ENABLED) {
       return;
     }
-    sawChunk = true;
-    debugLog('microphone audio chunk received');
+    chunkCount += 1;
+    if (chunkCount === 1 || chunkCount % 25 === 0) {
+      const size = Buffer.isBuffer(chunk) ? chunk.length : chunk.byteLength;
+      debugLog(`audio chunk received #${chunkCount}: ${size}`);
+    }
   });
   stream.on('error', (err: Error) => {
     debugLog(`microphone error: ${err.message}`);
   });
-  debugLog('microphone stream created');
+  stream.on('close', () => {
+    debugLog('microphone stream closed');
+  });
+  debugLog('microphone stream initialized');
 
   return {
     stream,

@@ -13,6 +13,7 @@ import {
 import { createAudioBlob } from '../audio/audioStream.js';
 
 const DEFAULT_LIVE_MODEL = 'gemini-live-2.5-flash-preview';
+const VOICE_DEBUG_ENABLED = process.env['GEMINI_VOICE_DEBUG'] === 'true';
 
 export interface VoiceAudioCallbacks {
   onTranscript: (text: string) => void;
@@ -44,6 +45,7 @@ function extractTranscript(message: LiveServerMessage): string | null {
 
 export class GeminiAudioClient implements VoiceAudioClient {
   private session: Session | undefined;
+  private connected = false;
 
   constructor(
     private readonly ai: GoogleGenAI = new GoogleGenAI({}),
@@ -55,36 +57,79 @@ export class GeminiAudioClient implements VoiceAudioClient {
       model: this.model,
       config: {
         responseModalities: [Modality.TEXT],
+        inputAudioTranscription: {},
       },
       callbacks: {
+        onopen: () => {
+          this.connected = true;
+          if (VOICE_DEBUG_ENABLED) {
+            process.stdout.write(
+              '[voice:debug] Gemini Live websocket opened\n',
+            );
+          }
+        },
         onmessage: (message) => {
+          if (VOICE_DEBUG_ENABLED) {
+            const hasInputTranscript = Boolean(
+              message.serverContent?.inputTranscription?.text,
+            );
+            const hasModelTurn = Boolean(message.serverContent?.modelTurn);
+            process.stdout.write(
+              `[voice:debug] Gemini Live message received (inputTranscript=${hasInputTranscript}, modelTurn=${hasModelTurn})\n`,
+            );
+          }
           const transcript = extractTranscript(message);
           if (transcript) {
             callbacks.onTranscript(transcript);
+          } else if (VOICE_DEBUG_ENABLED) {
+            process.stdout.write(
+              '[voice:debug] Gemini Live message had no transcript text\n',
+            );
           }
         },
         onerror: (event) => {
+          this.connected = false;
           const err =
             event.error instanceof Error
               ? event.error
               : new Error('Gemini live audio session error');
           callbacks.onError(err);
         },
+        onclose: (event) => {
+          this.connected = false;
+          if (VOICE_DEBUG_ENABLED) {
+            process.stdout.write(
+              `[voice:debug] Gemini Live websocket closed (code=${event.code}, reason="${event.reason}")\n`,
+            );
+          }
+          callbacks.onError(
+            new Error(
+              `Gemini Live connection closed (code=${event.code}, reason="${event.reason || 'none'}")`,
+            ),
+          );
+        },
       },
     });
   }
 
   sendAudioChunk(chunk: Buffer): void {
+    if (!this.connected || !this.session) {
+      return;
+    }
     this.session?.sendRealtimeInput({
       audio: createAudioBlob(chunk),
     });
   }
 
   endAudioInput(): void {
+    if (!this.connected || !this.session) {
+      return;
+    }
     this.session?.sendRealtimeInput({ audioStreamEnd: true });
   }
 
   close(): void {
+    this.connected = false;
     this.session?.close();
     this.session = undefined;
   }
