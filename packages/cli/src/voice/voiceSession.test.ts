@@ -13,132 +13,157 @@ vi.mock('../nonInteractiveCli.js', () => ({
 }));
 
 import { VoiceSession } from './voiceSession.js';
-import { PassThrough, Readable } from 'node:stream';
+import { PassThrough } from 'node:stream';
+import type { MicrophoneCapture } from './audio/microphone.js';
+import type {
+  VoiceAudioCallbacks,
+  VoiceAudioClient,
+} from './gemini/geminiAudioClient.js';
+
+class FakeGeminiAudioClient implements VoiceAudioClient {
+  callbacks: VoiceAudioCallbacks | undefined;
+  readonly chunks: Buffer[] = [];
+  closed = false;
+  ended = false;
+
+  async connect(callbacks: VoiceAudioCallbacks): Promise<void> {
+    this.callbacks = callbacks;
+  }
+
+  sendAudioChunk(chunk: Buffer): void {
+    this.chunks.push(chunk);
+  }
+
+  endAudioInput(): void {
+    this.ended = true;
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  emitTranscript(text: string): void {
+    this.callbacks?.onTranscript(text);
+  }
+}
 
 describe('VoiceSession', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should process recognized commands and call runNonInteractive', async () => {
-    const input = Readable.from(['install dependencies\n', 'build project\n']);
+  function createHarness() {
+    const output = new PassThrough();
+    const microphoneStream = new PassThrough();
+    const fakeClient = new FakeGeminiAudioClient();
+    let printed = '';
+    output.on('data', (chunk: Buffer | string) => {
+      printed += chunk.toString();
+    });
+
+    const micStop = vi.fn();
+    const mic: MicrophoneCapture = {
+      stream: microphoneStream,
+      stop: micStop,
+    };
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const voiceSession = new VoiceSession({} as any, {} as any, {
-      input,
+      output,
+      createMicrophone: () => mic,
+      createGeminiAudioClient: () => fakeClient,
       createPromptId: () => 'test-id',
     });
 
-    await voiceSession.start();
+    return {
+      voiceSession,
+      fakeClient,
+      microphoneStream,
+      getPrinted: () => printed,
+      micStop,
+    };
+  }
 
-    expect(mockRunNonInteractive).toHaveBeenCalledTimes(2);
-    expect(mockRunNonInteractive).toHaveBeenNthCalledWith(
-      1,
+  it('should stream audio and execute recognized command from transcript', async () => {
+    const harness = createHarness();
+    const startPromise = harness.voiceSession.start();
+    await Promise.resolve();
+
+    harness.microphoneStream.write(Buffer.from('audio-chunk-1'));
+    harness.fakeClient.emitTranscript('install dependencies');
+    harness.fakeClient.emitTranscript('exit');
+    harness.microphoneStream.end();
+
+    await startPromise;
+
+    expect(mockRunNonInteractive).toHaveBeenCalledTimes(1);
+    expect(mockRunNonInteractive).toHaveBeenCalledWith(
       expect.objectContaining({
         input: 'npm install',
         prompt_id: 'test-id',
       }),
     );
-    expect(mockRunNonInteractive).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        input: 'npm run build',
-        prompt_id: 'test-id',
-      }),
-    );
   });
 
-  it('should ignore empty or whitespace-only lines', async () => {
-    const input = Readable.from(['\n', '  \n', 'build project\n']);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const voiceSession = new VoiceSession({} as any, {} as any, {
-      input,
-    });
+  it('should print help text when transcript asks for help', async () => {
+    const harness = createHarness();
+    const startPromise = harness.voiceSession.start();
+    await Promise.resolve();
 
-    await voiceSession.start();
+    harness.fakeClient.emitTranscript('what can i say');
+    harness.fakeClient.emitTranscript('exit');
+    harness.microphoneStream.end();
 
-    expect(mockRunNonInteractive).toHaveBeenCalledTimes(1);
-    expect(mockRunNonInteractive).toHaveBeenCalledWith(
-      expect.objectContaining({
-        input: 'npm run build',
-      }),
-    );
-  });
-
-  it('should print suggestion when command is not recognized but similar', async () => {
-    const input = Readable.from(['install dep\n']);
-    const output = new PassThrough();
-    let printed = '';
-    output.on('data', (chunk: Buffer | string) => {
-      printed += chunk.toString();
-    });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const voiceSession = new VoiceSession({} as any, {} as any, {
-      input,
-      output,
-    });
-
-    await voiceSession.start();
+    await startPromise;
 
     expect(mockRunNonInteractive).not.toHaveBeenCalled();
-    expect(printed).toContain('Did you mean: npm install ?');
+    expect(harness.getPrinted()).toContain('Voice Mode Commands:');
+    expect(harness.getPrinted()).toContain('build project -> npm run build');
   });
 
-  it('should print unknown message when no suggestion exists', async () => {
-    const input = Readable.from(['say hello to world\n']);
-    const output = new PassThrough();
-    let printed = '';
-    output.on('data', (chunk: Buffer | string) => {
-      printed += chunk.toString();
-    });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const voiceSession = new VoiceSession({} as any, {} as any, {
-      input,
-      output,
-    });
+  it('should suggest command for partially matched transcript', async () => {
+    const harness = createHarness();
+    const startPromise = harness.voiceSession.start();
+    await Promise.resolve();
 
-    await voiceSession.start();
+    harness.fakeClient.emitTranscript('install dep');
+    harness.fakeClient.emitTranscript('exit');
+    harness.microphoneStream.end();
+
+    await startPromise;
 
     expect(mockRunNonInteractive).not.toHaveBeenCalled();
-    expect(printed).toContain('Voice command not recognized.');
+    expect(harness.getPrinted()).toContain('Did you mean: npm install ?');
   });
 
-  it('should print help text when user asks for help', async () => {
-    const input = Readable.from(['what can I say?\n']);
-    const output = new PassThrough();
-    let printed = '';
-    output.on('data', (chunk: Buffer | string) => {
-      printed += chunk.toString();
-    });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const voiceSession = new VoiceSession({} as any, {} as any, {
-      input,
-      output,
-    });
+  it('should print unknown message when transcript is unrecognized', async () => {
+    const harness = createHarness();
+    const startPromise = harness.voiceSession.start();
+    await Promise.resolve();
 
-    await voiceSession.start();
+    harness.fakeClient.emitTranscript('say hello to world');
+    harness.fakeClient.emitTranscript('exit');
+    harness.microphoneStream.end();
+
+    await startPromise;
 
     expect(mockRunNonInteractive).not.toHaveBeenCalled();
-    expect(printed).toContain('Voice Mode Commands:');
-    expect(printed).toContain('install dependencies -> npm install');
-    expect(printed).toContain('exit -> leave voice mode');
+    expect(harness.getPrinted()).toContain('Voice command not recognized.');
   });
 
-  it('should exit voice mode when user enters exit', async () => {
-    const input = Readable.from(['exit\n', 'build project\n']);
-    const output = new PassThrough();
-    let printed = '';
-    output.on('data', (chunk: Buffer | string) => {
-      printed += chunk.toString();
-    });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const voiceSession = new VoiceSession({} as any, {} as any, {
-      input,
-      output,
-    });
+  it('should stop microphone and close client when exiting', async () => {
+    const harness = createHarness();
+    const startPromise = harness.voiceSession.start();
+    await Promise.resolve();
 
-    await voiceSession.start();
+    harness.fakeClient.emitTranscript('exit');
+    harness.microphoneStream.end();
 
-    expect(mockRunNonInteractive).not.toHaveBeenCalled();
-    expect(printed).toContain('Exiting voice mode.');
+    await startPromise;
+
+    expect(harness.micStop).toHaveBeenCalled();
+    expect(harness.fakeClient.closed).toBe(true);
+    expect(harness.fakeClient.ended).toBe(true);
+    expect(harness.getPrinted()).toContain('Exiting voice mode.');
   });
 });

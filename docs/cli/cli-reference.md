@@ -49,22 +49,20 @@ and parameters.
 | `--include-directories`          | -     | array   | -         | Additional directories to include in the workspace (comma-separated or multiple flags)                                                                                 |
 | `--screen-reader`                | -     | boolean | -         | Enable screen reader mode for accessibility                                                                                                                            |
 | `--output-format`                | `-o`  | string  | `text`    | The format of the CLI output. Choices: `text`, `json`, `stream-json`                                                                                                   |
-| `--voice`                        | -     | boolean | `false`   | Enable Hands-Free Voice Mode (experimental). This release uses terminal text input as a placeholder; native audio streaming is planned for a future PR.                |
+| `--voice`                        | -     | boolean | `false`   | Enable Hands-Free Voice Mode (experimental). Streams microphone audio to Gemini Live API and maps transcripted intents to CLI commands.                                |
 
 ## Hands-Free Voice Mode (experimental)
 
-Use `gemini --voice` to run the current voice-mode scaffold.
+Use `gemini --voice` to run hands-free voice mode with Gemini Live streaming.
 
 Note: This feature is experimental and under active development. See issue
 #21252 for roadmap discussion.
 
-- It currently accepts text input in the terminal as a placeholder for spoken
-  input.
-- Responses are steered toward concise, voice-friendly output.
-- Native microphone/audio streaming is not implemented in this PR and will be
-  added in a future PR.
-- Ask for available commands by typing `help`, `what can i say`, or `commands`.
-- Type `exit` to leave voice mode.
+- Streams microphone audio (16kHz mono PCM) directly to Gemini Live API.
+- Uses Gemini transcription output to detect and execute supported CLI intents.
+- Requires `node-record-lpcm16` in the CLI workspace for microphone capture.
+- Ask for available commands by saying `help`, `what can i say`, or `commands`.
+- Say `exit` to leave voice mode.
 
 ### Voice mode commands
 
